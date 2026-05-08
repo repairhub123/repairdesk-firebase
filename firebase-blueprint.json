@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "Job": {
+      "title": "Repair Job",
+      "description": "A single repair job in the system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Customer name" },
+        "phone": { "type": "string", "description": "Customer phone number" },
+        "model": { "type": "string", "description": "Phone model" },
+        "work": { "type": "string", "description": "Description of work or repairs" },
+        "amount": { "type": "number", "description": "Total amount charged" },
+        "cost": { "type": "number", "description": "Cost of parts/materials" },
+        "profit": { "type": "number", "description": "Profit (amount - cost)" },
+        "percentage": { "type": "number", "description": "Technician share percentage" },
+        "technician_share": { "type": "number", "description": "Calculated technician share" },
+        "boss_share": { "type": "number", "description": "Calculated boss share" },
+        "status": { "type": "string", "enum": ["Pending", "Completed"], "description": "Current job status" },
+        "photo": { "type": "string", "description": "URL to the job photo in storage" },
+        "added_by": { "type": "string", "enum": ["Boss", "Technician", ""], "description": "Who added the job" },
+        "receivedAt": { "type": "string", "format": "date-time", "description": "When the job was received (Firestore timestamp)" },
+        "completedAt": { "type": "string", "format": "date-time", "description": "When the job was completed (Firestore timestamp)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["name", "phone", "model", "work", "amount", "cost", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "jobs/{jobId}": {
+      "schema": "Job",
+      "description": "Collection of all repair jobs."
+    }
+  }
+}

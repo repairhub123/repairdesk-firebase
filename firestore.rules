@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Job Validation Blueprint
+    function isValidJob(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.phone is string && data.phone.size() > 0 && data.phone.size() <= 20 &&
+             data.model is string && data.model.size() > 0 && data.model.size() <= 100 &&
+             data.work is string && data.work.size() > 0 && data.work.size() <= 1000 &&
+             data.amount is number &&
+             data.cost is number &&
+             data.profit is number &&
+             data.percentage is number &&
+             data.technician_share is number &&
+             data.boss_share is number &&
+             data.status in ['Pending', 'Completed'] &&
+             (data.get('photo', '') is string) &&
+             (data.get('added_by', '') in ['Boss', 'Technician', '']) &&
+             // Handle server timestamps or existing timestamps
+             (data.get('receivedAt', request.time) == request.time || data.get('receivedAt', null) is timestamp) &&
+             (data.get('completedAt', null) == null || data.get('completedAt', null) is timestamp || data.get('completedAt', null) == request.time);
+    }
+
+    // Jobs Collection
+    match /jobs/{jobId} {
+      // For this specific app, we trust authenticated users
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn() &&
+                      isValidId(jobId) &&
+                      isValidJob(incoming()) &&
+                      incoming().createdAt == request.time &&
+                      incoming().updatedAt == request.time;
+      
+      allow update: if isSignedIn() &&
+                      isValidJob(incoming()) &&
+                      incoming().updatedAt == request.time &&
+                      incoming().createdAt == existing().createdAt && // Immutable
+                      (
+                        // Completion Action
+                        (existing().status == 'Pending' && incoming().status == 'Completed' && 
+                         incoming().completedAt == request.time &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'completedAt', 'updatedAt', 'profit', 'technician_share', 'boss_share', 'amount', 'cost', 'percentage', 'name', 'phone', 'model', 'work', 'photo', 'added_by'])) ||
+                        // Edit Action
+                        (incoming().diff(existing()).affectedKeys().hasAll(['updatedAt']))
+                      );
+                      
+      allow delete: if isSignedIn();
+    }
+  }
+}
