@@ -1,5 +1,5 @@
 {
-  "name": "Repair Desk",
+  "name": "RepairDesk",
   "short_name": "RepairDesk",
   "description": "Repair shop management app with realtime Firebase sync",
   "theme_color": "#6d28d9",
@@ -8,6 +8,7 @@
   "orientation": "portrait",
   "scope": "/",
   "start_url": "/",
+  "id": "/",
   "icons": [
     {
       "src": "/icon-192.png",
