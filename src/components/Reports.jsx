@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { formatINR } from "@/lib/api";
 import {
   TrendingUp, Receipt, Wallet, Briefcase, Coins, User, Crown, CheckCircle2,
 } from "lucide-react";
 import { startOfToday, startOfWeek, startOfMonth, isAfter } from "date-fns";
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const PERIODS = [
   { key: "today", label: "Today" },
@@ -28,6 +30,20 @@ function totalsOf(list) {
 
 export default function Reports({ jobs }) {
   const [period, setPeriod] = useState("today");
+  const [expenses, setExpenses] = useState([]);
+
+  useEffect(() => {
+    const q = query(collection(db, "expenses"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  const totalExpenses = useMemo(
+    () => expenses.reduce((s, e) => s + Number(e.amount || 0), 0),
+    [expenses]
+  );
 
   const fromDate = useMemo(() => {
     if (period === "today") return startOfToday();
@@ -118,6 +134,16 @@ export default function Reports({ jobs }) {
           </div>
         </div>
       </Section>
+
+      {totalExpenses > 0 && (
+        <Section title="Additional Expenses" icon={<Receipt size={14} />} testid="section-expenses">
+          <div className="big-kpi" style={{ background: "var(--surface-2, var(--surface))", borderRadius: 10, padding: "14px 16px" }}>
+            <div className="k">Total Expenses (record only)</div>
+            <div className="v" style={{ fontSize: 24, fontWeight: 700, color: "var(--muted)" }}>{formatINR(totalExpenses)}</div>
+            <div className="sub mono" style={{ marginTop: 4 }}>Expenses tab mein manage karo</div>
+          </div>
+        </Section>
+      )}
 
       <Section title="Boss Section" icon={<Crown size={14} />} testid="section-boss">
         <BigKPI
