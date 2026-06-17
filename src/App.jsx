@@ -5,83 +5,174 @@ import { Toaster } from "sonner";
 import RepairShop from "@/pages/RepairShop";
 import RoleGate from "@/components/RoleGate";
 import { useRole } from "@/hooks/useRole";
-import { onAuthStateChanged, signInAnonymously, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, Wrench, Eye, EyeOff } from "lucide-react";
+
+// username → email mapping (hidden from UI)
+const USERNAME = "dhingramobile";
+const EMAIL    = "dhingramobile@repairdesk.com";
 
 function Shell() {
   const { role, setRole, clearRole } = useRole();
   const [authReady, setAuthReady] = useState(false);
-  const [authError, setAuthError] = useState(null);
+  const [user, setUser] = useState(null);
+
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        signInAnonymously(auth).catch((err) => {
-          console.error("Anonymous Auth Failed:", err);
-          if (err.code === 'auth/admin-restricted-operation') {
-            setAuthError("Anonymous auth is disabled. Please sign in with Google or enable Anonymous Auth in Firebase Console.");
-          } else {
-            setAuthError(err.message);
-          }
-          setAuthReady(true);
-        });
-      } else {
-        setAuthReady(true);
-        setAuthError(null);
-      }
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthReady(true);
     });
     return unsub;
   }, []);
 
-  const handleGoogleLogin = async () => {
-    const provider = new GoogleAuthProvider();
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (username.trim().toLowerCase() !== USERNAME) {
+      setError("Galat username hai");
+      return;
+    }
+    setLoading(true);
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithEmailAndPassword(auth, EMAIL, password);
     } catch (err) {
-      setAuthError(err.message);
+      setError("Galat password hai");
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleLogout = async () => {
+    clearRole();
+    await signOut(auth);
+  };
+
+  // Loading state
   if (!authReady) {
     return (
       <div className="empty" style={{ height: "100vh" }}>
-        <Loader2 className="spin" /> Initializing...
+        <Loader2 className="spin" /> Loading...
       </div>
     );
   }
 
-  if (authError && !auth.currentUser) {
+  // Not logged in → show login screen
+  if (!user) {
     return (
-      <div className="empty" style={{ 
-        height: "100vh", 
-        padding: "2rem", 
-        display: "flex", 
-        flexDirection: "column", 
-        alignItems: "center", 
+      <div style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         justifyContent: "center",
-        textAlign: "center" 
+        padding: "2rem",
+        background: "var(--bg, #0a0a0a)",
       }}>
-        <div style={{ maxWidth: "400px", marginBottom: "2rem" }}>
-          <h2 style={{ marginBottom: "1rem", fontSize: "1.2rem", fontWeight: "600" }}>Authentication Required</h2>
-          <p className="text-muted" style={{ marginBottom: "1.5rem", fontSize: "0.9rem", lineHeight: "1.5" }}>
-            {authError}
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <button className="btn primary full" onClick={handleGoogleLogin} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-              <LogIn size={18} /> Sign in with Google
-            </button>
-            <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-              Alternatively, enable "Anonymous" auth in your <a href={`https://console.firebase.google.com/project/${auth.app.options.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>Firebase Console</a>.
-            </p>
+        {/* Brand */}
+        <div className="brand" style={{ marginBottom: "2.5rem" }}>
+          <div className="brand-mark">
+            <Wrench size={28} />
           </div>
+          <div>
+            <h1 style={{ fontSize: "1.8rem" }}>Repair Desk</h1>
+            <small style={{ color: "var(--muted)" }}>Dhingra Mobile</small>
+          </div>
+        </div>
+
+        {/* Login Card */}
+        <div style={{
+          width: "100%",
+          maxWidth: 360,
+          background: "var(--card, #111)",
+          borderRadius: 16,
+          padding: "2rem",
+          border: "1px solid var(--border, #222)",
+        }}>
+          <h2 style={{ marginBottom: "1.5rem", fontSize: "1.1rem", textAlign: "center" }}>
+            Login karo
+          </h2>
+
+          <form onSubmit={handleLogin}>
+            {/* Username */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 13, color: "var(--muted)", display: "block", marginBottom: 6 }}>
+                Username
+              </label>
+              <input
+                className="search"
+                style={{ width: "100%", boxSizing: "border-box" }}
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+            </div>
+
+            {/* Password */}
+            <div style={{ marginBottom: 20, position: "relative" }}>
+              <label style={{ fontSize: 13, color: "var(--muted)", display: "block", marginBottom: 6 }}>
+                Password
+              </label>
+              <input
+                className="search"
+                style={{ width: "100%", boxSizing: "border-box", paddingRight: 44 }}
+                placeholder="Password"
+                type={showPass ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                style={{
+                  position: "absolute", right: 12, bottom: 10,
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "var(--muted)", padding: 0,
+                }}
+              >
+                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+
+            {error && (
+              <div style={{
+                color: "#ef4444", fontSize: 13,
+                marginBottom: 14, textAlign: "center",
+              }}>
+                ❌ {error}
+              </div>
+            )}
+
+            <button
+              className="btn primary full"
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? <><Loader2 size={14} className="spin" /> Login ho raha hai...</> : "Login"}
+            </button>
+          </form>
         </div>
       </div>
     );
   }
 
+  // Logged in but role not picked
   if (!role) return <RoleGate onPick={setRole} />;
-  return <RepairShop role={role} onSwitchRole={clearRole} />;
+
+  // Fully authenticated
+  return <RepairShop role={role} onSwitchRole={handleLogout} />;
 }
 
 function App() {
