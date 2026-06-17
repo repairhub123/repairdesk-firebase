@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
-  Plus, Search, Wrench, Loader2, Crown, User, LogOut,
+  Plus, Search, Wrench, Loader2, Crown, User, LogOut, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { 
   markCompleted, 
-  formatINR, display
+  formatINR, display,
+  deleteJob,
+  resetAllData,
 } from "@/lib/api";
 import JobDialog from "@/components/JobDialog";
 import JobCard from "@/components/JobCard";
@@ -29,6 +31,9 @@ export default function RepairShop({ role, onSwitchRole }) {
   const [editingJob, setEditingJob] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [historyPhone, setHistoryPhone] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // job to delete
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // Realtime Firestore Listener
   useEffect(() => {
@@ -72,6 +77,31 @@ export default function RepairShop({ role, onSwitchRole }) {
   const openAdd = () => { setEditingJob(null); setDialogOpen(true); };
   const openEdit = (job) => { setEditingJob(job); setDialogOpen(true); };
   const openCustomer = (phone) => phone && setHistoryPhone(phone);
+
+  const handleDeleteConfirm = async () => {
+    if (!confirmDelete) return;
+    try {
+      await deleteJob(confirmDelete.id);
+      toast.success("Job deleted");
+    } catch (err) {
+      toast.error("Failed to delete job");
+    } finally {
+      setConfirmDelete(null);
+    }
+  };
+
+  const handleResetConfirm = async () => {
+    setResetting(true);
+    try {
+      await resetAllData();
+      toast.success("All data reset successfully!");
+    } catch (err) {
+      toast.error("Failed to reset data");
+    } finally {
+      setResetting(false);
+      setConfirmReset(false);
+    }
+  };
 
   const visibleJobs = useMemo(() => {
     if (scope === "mine" && role) {
@@ -127,6 +157,15 @@ export default function RepairShop({ role, onSwitchRole }) {
           </div>
         </div>
         <div className="header-right">
+          <button
+            type="button"
+            className="role-chip"
+            onClick={() => setConfirmReset(true)}
+            style={{ background: "var(--danger, #ef4444)", color: "#fff", marginRight: 6 }}
+            title="Reset all data"
+          >
+            Reset Month
+          </button>
           <button
             type="button"
             className={`role-chip ${isBoss ? "boss" : "tech"}`}
@@ -241,6 +280,7 @@ export default function RepairShop({ role, onSwitchRole }) {
                   job={j}
                   onComplete={handleComplete}
                   onEdit={openEdit}
+                  onDelete={(job) => setConfirmDelete(job)}
                   onOpenCustomer={openCustomer}
                   busy={busyId === j.id}
                   formatINR={formatINR}
@@ -281,6 +321,83 @@ export default function RepairShop({ role, onSwitchRole }) {
         phone={historyPhone}
         jobs={jobs}
       />
+
+      {/* Delete Confirmation */}
+      {confirmDelete && (
+        <div className="lightbox" onClick={() => setConfirmDelete(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--card, #1a1a1a)",
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 320,
+              width: "90%",
+              textAlign: "center",
+            }}
+          >
+            <Trash2 size={32} color="#ef4444" style={{ marginBottom: 12 }} />
+            <h3 style={{ marginBottom: 8 }}>Delete Job?</h3>
+            <p style={{ color: "var(--muted)", marginBottom: 20, fontSize: 14 }}>
+              <strong>{confirmDelete.name}</strong> — {confirmDelete.model}<br />
+              This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="btn full"
+                style={{ background: "var(--surface2, #2a2a2a)" }}
+                onClick={() => setConfirmDelete(null)}
+              >Cancel</button>
+              <button
+                className="btn primary full"
+                style={{ background: "#ef4444" }}
+                onClick={handleDeleteConfirm}
+              >Yes, Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation */}
+      {confirmReset && (
+        <div className="lightbox" onClick={() => setConfirmReset(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--card, #1a1a1a)",
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 320,
+              width: "90%",
+              textAlign: "center",
+            }}
+          >
+            <span style={{ fontSize: 36 }}>⚠️</span>
+            <h3 style={{ marginBottom: 8, marginTop: 12 }}>Reset All Data?</h3>
+            <p style={{ color: "var(--muted)", marginBottom: 20, fontSize: 14 }}>
+              This will permanently delete <strong>ALL jobs and expenses</strong>.<br />
+              Use this at month end after taking hisab.<br /><br />
+              <strong style={{ color: "#ef4444" }}>This cannot be undone!</strong>
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="btn full"
+                style={{ background: "var(--surface2, #2a2a2a)" }}
+                onClick={() => setConfirmReset(false)}
+                disabled={resetting}
+              >Cancel</button>
+              <button
+                className="btn primary full"
+                style={{ background: "#ef4444" }}
+                onClick={handleResetConfirm}
+                disabled={resetting}
+              >
+                {resetting ? "Resetting..." : "Yes, Reset Everything"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

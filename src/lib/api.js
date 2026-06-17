@@ -2,11 +2,13 @@ import {
   collection, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   doc, 
   getDocs, 
   query, 
   orderBy, 
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage, auth } from "./firebase";
@@ -127,4 +129,26 @@ export function display(v) {
 
 export async function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+export async function deleteJob(id) {
+  const path = `${JOBS_COLLECTION}/${id}`;
+  try {
+    await deleteDoc(doc(db, JOBS_COLLECTION, id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function resetAllData() {
+  try {
+    const batch = writeBatch(db);
+    const jobsSnap = await getDocs(collection(db, "jobs"));
+    jobsSnap.docs.forEach(d => batch.delete(d.ref));
+    const expSnap = await getDocs(collection(db, "expenses"));
+    expSnap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, "reset");
+  }
 }

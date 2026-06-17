@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import {
-  CheckCircle2, Loader2, Phone, Smartphone, ImageIcon, Pencil, Crown, User,
+  CheckCircle2, Loader2, Phone, Smartphone, ImageIcon, Pencil, Crown, User, Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { photoUrl } from "@/lib/api";
 
 export default function JobCard({
-  job, onComplete, onEdit, onOpenCustomer, busy, formatINR, display,
+  job, onComplete, onEdit, onDelete, onOpenCustomer, busy, formatINR, display,
 }) {
   const isCompleted = job.status === "Completed";
   const [zoom, setZoom] = useState(false);
@@ -89,6 +89,16 @@ export default function JobCard({
             aria-label="Edit job"
           >
             <Pencil size={13} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => onDelete(job)}
+            data-testid={`btn-delete-${job.id}`}
+            aria-label="Delete job"
+            style={{ color: "var(--danger, #ef4444)", marginTop: 2 }}
+          >
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
