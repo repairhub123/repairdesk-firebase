@@ -152,3 +152,17 @@ export async function resetAllData() {
     handleFirestoreError(error, OperationType.DELETE, "reset");
   }
 }
+
+export async function decrementStock(stockId) {
+  try {
+    const { getDoc, updateDoc, doc: fsDoc } = await import("firebase/firestore");
+    const ref = fsDoc(db, "stock", stockId);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const current = Number(snap.data().qty || 0);
+      await updateDoc(ref, { qty: Math.max(0, current - 1), updatedAt: new Date() });
+    }
+  } catch (err) {
+    console.error("Stock decrement error:", err);
+  }
+}

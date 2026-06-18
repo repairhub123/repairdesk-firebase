@@ -7,10 +7,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { addJob, editJob, uploadPhoto, photoUrl, formatINR } from "@/lib/api";
+import { addJob, editJob, uploadPhoto, photoUrl, formatINR, decrementStock } from "@/lib/api";
 import { toast } from "sonner";
-import { Loader2, Camera, ImagePlus, X } from "lucide-react";
+import { Loader2, Camera, ImagePlus, X, Package } from "lucide-react";
 import { getStoredRole } from "@/hooks/useRole";
+import { collection, query, orderBy, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const REPAIR_TYPES = [
   "Screen", "Battery", "Charging", "Software",
@@ -24,6 +26,7 @@ const EMPTY = {
   types: [], description: "",
   cost: "", amount: "", percentage: 30,
   photoPath: "", photoPreview: "",
+  selectedStockId: "",
 };
 
 function parseWork(work) {
@@ -45,8 +48,18 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
   const [f, setF] = useState(EMPTY);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [stockItems, setStockItems] = useState([]);
+  const [stockSearch, setStockSearch] = useState("");
+  const [showStockPicker, setShowStockPicker] = useState(false);
   const cameraRef = useRef(null);
   const galleryRef = useRef(null);
+
+  // Load stock items
+  useEffect(() => {
+    getDocs(query(collection(db, "stock"), orderBy("createdAt", "desc")))
+      .then((snap) => setStockItems(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -145,6 +158,10 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
         await editJob(job.id, payload);
       } else {
         await addJob(payload);
+        // Auto decrement stock if part was selected
+        if (f.selectedStockId) {
+          await decrementStock(f.selectedStockId);
+        }
       }
       onOpenChange(false);
       onSaved && onSaved();
@@ -298,13 +315,84 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
           <div className="row2">
             <div className="field">
               <label>Cost (₹)</label>
-              <input
-                data-testid="input-cost"
-                className="input mono" inputMode="numeric"
-                value={f.cost}
-                onChange={(e) => setF({ ...f, cost: e.target.value.replace(/[^0-9.]/g, "") })}
-                placeholder="0"
-              />
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  data-testid="input-cost"
+                  className="input mono" inputMode="numeric"
+                  value={f.cost}
+                  onChange={(e) => setF({ ...f, cost: e.target.value.replace(/[^0-9.]/g, "") })}
+                  placeholder="0"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  title="Stock se pick karo"
+                  style={{ padding: "0 10px", flexShrink: 0 }}
+                  onClick={() => setShowStockPicker(!showStockPicker)}
+                >
+                  <Package size={15} />
+                </button>
+              </div>
+              {/* Stock Picker Dropdown */}
+              {showStockPicker && (
+                <div style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  marginTop: 6,
+                  padding: 10,
+                  maxHeight: 220,
+                  overflowY: "auto",
+                }}>
+                  <input
+                    className="input"
+                    placeholder="Part ya model search..."
+                    value={stockSearch}
+                    onChange={(e) => setStockSearch(e.target.value)}
+                    style={{ marginBottom: 8, fontSize: 12 }}
+                  />
+                  {stockItems
+                    .filter((s) => {
+                      const q = stockSearch.toLowerCase();
+                      return (s.name || "").toLowerCase().includes(q) || (s.model || "").toLowerCase().includes(q);
+                    })
+                    .map((s) => (
+                      <div
+                        key={s.id}
+                        onClick={() => {
+                          setF({ ...f, cost: String(s.buyPrice || ""), selectedStockId: s.id });
+                          setShowStockPicker(false);
+                          setStockSearch("");
+                          toast.success(`${s.name} (${s.model}) — ₹${s.buyPrice} fill hua`);
+                        }}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          background: "var(--surface2, #1a1a1a)",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: "var(--muted)" }}>{s.model} • Stock: {s.qty}</div>
+                        </div>
+                        <div style={{ fontWeight: 700, color: "var(--primary, #a3e635)" }}>
+                          ₹{s.buyPrice}
+                        </div>
+                      </div>
+                    ))}
+                  {stockItems.length === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", padding: 10 }}>
+                      Stock mein koi part nahi. Pehle Stock tab mein add karo.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="field">
               <label>Amount (₹)</label>
