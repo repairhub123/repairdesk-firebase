@@ -11,7 +11,7 @@ import { addJob, editJob, uploadPhoto, photoUrl, formatINR, decrementStock } fro
 import { toast } from "sonner";
 import { Loader2, Camera, ImagePlus, X, Package } from "lucide-react";
 import { getStoredRole } from "@/hooks/useRole";
-import { collection, query, orderBy, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const REPAIR_TYPES = [
@@ -27,6 +27,8 @@ const EMPTY = {
   cost: "", amount: "", percentage: 30,
   photoPath: "", photoPreview: "",
   selectedStockId: "",
+  paymentStatus: "full", // "full" | "partial" | "unpaid"
+  paidAmount: "",
 };
 
 function parseWork(work) {
@@ -161,6 +163,21 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
         // Auto decrement stock if part was selected
         if (f.selectedStockId) {
           await decrementStock(f.selectedStockId);
+        }
+        // Create due if payment not full
+        if (f.paymentStatus !== "full") {
+          const totalAmount = Number(f.amount || 0);
+          const paidAmount = f.paymentStatus === "unpaid" ? 0 : Number(f.paidAmount || 0);
+          await addDoc(collection(db, "dues"), {
+            name: f.name.trim(),
+            phone: f.phone.trim(),
+            total: totalAmount,
+            paid: paidAmount,
+            note: `${f.model.trim()} — ${payload.work}`,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          toast.success(f.paymentStatus === "unpaid" ? "Due add ho gaya 🔴" : `Due add ho gaya — ₹${totalAmount - paidAmount} baaki 🟡`);
         }
       }
       onOpenChange(false);
@@ -407,8 +424,39 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
           </div>
 
           <div className="field">
+          {/* Payment Status — only for new jobs */}
+          {!isEdit && (
+            <div className="field">
+              <label>Payment</label>
+              <div className="chips">
+                {[
+                  { key: "full", label: "✅ Pura mila" },
+                  { key: "partial", label: "🟡 Adha" },
+                  { key: "unpaid", label: "🔴 Nahi mila" },
+                ].map((opt) => (
+                  <button
+                    type="button"
+                    key={opt.key}
+                    className={`chip ${f.paymentStatus === opt.key ? "active" : ""}`}
+                    onClick={() => setF({ ...f, paymentStatus: opt.key, paidAmount: "" })}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {f.paymentStatus === "partial" && (
+                <input
+                  className="input mono"
+                  style={{ marginTop: 8 }}
+                  inputMode="numeric"
+                  placeholder="₹ Kitna mila abhi?"
+                  value={f.paidAmount}
+                  onChange={(e) => setF({ ...f, paidAmount: e.target.value.replace(/[^0-9.]/g, "") })}
+                />
+              )}
+            </div>
+          )}
             <label>Share percentage</label>
-            <div className="chips">
               {PERCENT_OPTIONS.map((p) => (
                 <button
                   type="button"
