@@ -83,7 +83,7 @@ export default function RepairShop({ role, onSwitchRole }) {
   const handleDeleteConfirm = async () => {
     if (!confirmDelete) return;
     try {
-      await deleteJob(confirmDelete.id);
+      await deleteJob(confirmDelete.id, confirmDelete);
       toast.success("Job deleted");
     } catch (err) {
       toast.error("Failed to delete job");

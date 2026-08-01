@@ -131,10 +131,19 @@ export async function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export async function deleteJob(id) {
+export async function deleteJob(id, jobData) {
   const path = `${JOBS_COLLECTION}/${id}`;
   try {
     await deleteDoc(doc(db, JOBS_COLLECTION, id));
+    // Also delete linked due if exists (match by phone + name)
+    if (jobData?.phone) {
+      const duesSnap = await getDocs(collection(db, "dues"));
+      const linkedDue = duesSnap.docs.find(d => {
+        const data = d.data();
+        return data.phone === jobData.phone && data.name === jobData.name;
+      });
+      if (linkedDue) await deleteDoc(linkedDue.ref);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -147,6 +156,8 @@ export async function resetAllData() {
     jobsSnap.docs.forEach(d => batch.delete(d.ref));
     const expSnap = await getDocs(collection(db, "expenses"));
     expSnap.docs.forEach(d => batch.delete(d.ref));
+    const duesSnap = await getDocs(collection(db, "dues"));
+    duesSnap.docs.forEach(d => batch.delete(d.ref));
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, "reset");
