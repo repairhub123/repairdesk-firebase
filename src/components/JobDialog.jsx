@@ -27,7 +27,7 @@ const EMPTY = {
   cost: "", amount: "", percentage: 30,
   photoPath: "", photoPreview: "",
   selectedStockId: "",
-  paymentStatus: "full", // "full" | "partial" | "unpaid"
+  fullPayment: true,
   paidAmount: "",
 };
 
@@ -56,7 +56,6 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
   const cameraRef = useRef(null);
   const galleryRef = useRef(null);
 
-  // Load stock items
   useEffect(() => {
     getDocs(query(collection(db, "stock"), orderBy("createdAt", "desc")))
       .then((snap) => setStockItems(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
@@ -78,6 +77,9 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
         percentage: Number(job.percentage) || 30,
         photoPath: job.photo || "",
         photoPreview: "",
+        selectedStockId: "",
+        fullPayment: true,
+        paidAmount: "",
       });
     } else {
       setF(EMPTY);
@@ -99,27 +101,17 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
 
   const handleFile = async (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image");
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error("Image too large (max 8MB)");
-      return;
-    }
-    
-    // Preview
+    if (!file.type.startsWith("image/")) { toast.error("Please select an image"); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error("Image too large (max 8MB)"); return; }
     const reader = new FileReader();
     reader.onload = (e) => setF((p) => ({ ...p, photoPreview: e.target.result }));
     reader.readAsDataURL(file);
-
     setUploading(true);
     try {
       const { path } = await uploadPhoto(file);
       setF((p) => ({ ...p, photoPath: path }));
       toast.success("Photo uploaded");
     } catch (err) {
-      console.error(err);
       toast.error("Photo upload failed");
       setF((p) => ({ ...p, photoPreview: "" }));
     } finally {
@@ -136,8 +128,9 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
     if (!f.model.trim()) return toast.error("Model is required");
     if (f.types.length === 0) return toast.error("Select at least one repair type");
 
-    const work =
-      f.types.join(", ") + (f.description.trim() ? ` — ${f.description.trim()}` : "");
+    const work = f.types.join(", ") + (f.description.trim() ? ` — ${f.description.trim()}` : "");
+    const totalAmount = Number(f.amount || 0);
+    const paidNow = f.fullPayment ? totalAmount : Number(f.paidAmount || 0);
 
     setSubmitting(true);
     try {
@@ -147,7 +140,7 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
         model: f.model.trim(),
         work,
         cost: Number(f.cost || 0),
-        amount: Number(f.amount || 0),
+        amount: totalAmount,
         profit: profitValue,
         percentage: Number(f.percentage),
         technician_share: technicianShare,
@@ -155,31 +148,29 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
         photo: f.photoPath || "",
         added_by: isEdit ? (job.added_by || "") : (getStoredRole() || ""),
       };
-      
+
       if (isEdit) {
         await editJob(job.id, payload);
       } else {
         await addJob(payload);
-        // Auto decrement stock if part was selected
-        if (f.selectedStockId) {
-          await decrementStock(f.selectedStockId);
-        }
-        // Create due if payment not full
-        if (f.paymentStatus !== "full") {
-          const totalAmount = Number(f.amount || 0);
-          const paidAmount = f.paymentStatus === "unpaid" ? 0 : Number(f.paidAmount || 0);
+        if (f.selectedStockId) await decrementStock(f.selectedStockId);
+
+        // Create due only if not fully paid
+        if (!f.fullPayment && paidNow < totalAmount) {
           await addDoc(collection(db, "dues"), {
             name: f.name.trim(),
             phone: f.phone.trim(),
             total: totalAmount,
-            paid: paidAmount,
-            note: `${f.model.trim()} — ${payload.work}`,
+            paid: paidNow,
+            note: `${f.model.trim()} — ${work}`,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
-          toast.success(f.paymentStatus === "unpaid" ? "Due add ho gaya 🔴" : `Due add ho gaya — ₹${totalAmount - paidAmount} baaki 🟡`);
+          const baaki = totalAmount - paidNow;
+          toast.success(`Job saved! ₹${baaki} baaki — Dues mein add ho gaya 🟡`);
         }
       }
+
       onOpenChange(false);
       onSaved && onSaved();
     } catch (err) {
@@ -194,10 +185,7 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="dialog-content max-w-lg max-h-[92vh] overflow-y-auto"
-        data-testid="job-dialog"
-      >
+      <DialogContent className="dialog-content max-w-lg max-h-[92vh] overflow-y-auto" data-testid="job-dialog">
         <DialogHeader>
           <DialogTitle style={{ color: "var(--text)" }}>
             {isEdit ? "Edit Job" : "New Repair Job"}
@@ -216,88 +204,43 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
             {previewSrc ? (
               <div className="photo-preview" data-testid="photo-preview">
                 <img src={previewSrc} alt="Phone" />
-                <button
-                  type="button"
-                  className="photo-remove"
-                  data-testid="btn-remove-photo"
-                  onClick={clearPhoto}
-                  aria-label="Remove photo"
-                >
+                <button type="button" className="photo-remove" onClick={clearPhoto} aria-label="Remove photo">
                   <X size={14} />
                 </button>
-                {uploading && (
-                  <div className="photo-overlay">
-                    <Loader2 size={18} className="spin" />
-                  </div>
-                )}
+                {uploading && <div className="photo-overlay"><Loader2 size={18} className="spin" /></div>}
               </div>
             ) : (
               <div className="photo-picker">
-                <button
-                  type="button"
-                  className="btn photo-btn"
-                  data-testid="btn-capture-camera"
-                  onClick={() => cameraRef.current?.click()}
-                  disabled={uploading}
-                >
+                <button type="button" className="btn photo-btn" onClick={() => cameraRef.current?.click()} disabled={uploading}>
                   <Camera size={16} /> Camera
                 </button>
-                <button
-                  type="button"
-                  className="btn photo-btn"
-                  data-testid="btn-pick-gallery"
-                  onClick={() => galleryRef.current?.click()}
-                  disabled={uploading}
-                >
+                <button type="button" className="btn photo-btn" onClick={() => galleryRef.current?.click()} disabled={uploading}>
                   <ImagePlus size={16} /> Gallery
                 </button>
               </div>
             )}
-            <input
-              ref={cameraRef} type="file" accept="image/*" capture="environment"
-              style={{ display: "none" }}
-              onChange={(e) => handleFile(e.target.files?.[0])}
-              data-testid="input-camera"
-            />
-            <input
-              ref={galleryRef} type="file" accept="image/*"
-              style={{ display: "none" }}
-              onChange={(e) => handleFile(e.target.files?.[0])}
-              data-testid="input-gallery"
-            />
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+              onChange={(e) => handleFile(e.target.files?.[0])} />
+            <input ref={galleryRef} type="file" accept="image/*" style={{ display: "none" }}
+              onChange={(e) => handleFile(e.target.files?.[0])} />
           </div>
 
           <div className="field">
             <label>Customer name</label>
-            <input
-              data-testid="input-name"
-              className="input"
-              value={f.name}
-              onChange={(e) => setF({ ...f, name: e.target.value })}
-              placeholder="Ravi Kumar"
-            />
+            <input data-testid="input-name" className="input" value={f.name}
+              onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ravi Kumar" />
           </div>
 
           <div className="row2">
             <div className="field">
               <label>Phone</label>
-              <input
-                data-testid="input-phone"
-                className="input" inputMode="tel"
-                value={f.phone}
-                onChange={(e) => setF({ ...f, phone: e.target.value })}
-                placeholder="98xxxxxxxx"
-              />
+              <input data-testid="input-phone" className="input" inputMode="tel" value={f.phone}
+                onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="98xxxxxxxx" />
             </div>
             <div className="field">
               <label>Model</label>
-              <input
-                data-testid="input-model"
-                className="input"
-                value={f.model}
-                onChange={(e) => setF({ ...f, model: e.target.value })}
-                placeholder="iPhone 12"
-              />
+              <input data-testid="input-model" className="input" value={f.model}
+                onChange={(e) => setF({ ...f, model: e.target.value })} placeholder="iPhone 12" />
             </div>
           </div>
 
@@ -305,107 +248,59 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
             <label>Repair type (multi-select)</label>
             <div className="chips" data-testid="repair-types">
               {REPAIR_TYPES.map((t) => (
-                <button
-                  type="button"
-                  key={t}
+                <button type="button" key={t}
                   data-testid={`chip-${t.replace(/[^a-z0-9]/gi, "-").toLowerCase()}`}
                   className={`chip ${f.types.includes(t) ? "active" : ""}`}
-                  onClick={() => toggleType(t)}
-                >
-                  {t}
-                </button>
+                  onClick={() => toggleType(t)}>{t}</button>
               ))}
             </div>
           </div>
 
           <div className="field">
             <label>Description (optional)</label>
-            <textarea
-              data-testid="input-description"
-              className="textarea"
-              value={f.description}
+            <textarea data-testid="input-description" className="textarea" value={f.description}
               onChange={(e) => setF({ ...f, description: e.target.value })}
-              placeholder="Cracked display, touch works"
-            />
+              placeholder="Cracked display, touch works" />
           </div>
 
           <div className="row2">
             <div className="field">
               <label>Cost (₹)</label>
               <div style={{ display: "flex", gap: 6 }}>
-                <input
-                  data-testid="input-cost"
-                  className="input mono" inputMode="numeric"
-                  value={f.cost}
-                  onChange={(e) => setF({ ...f, cost: e.target.value.replace(/[^0-9.]/g, "") })}
-                  placeholder="0"
-                  style={{ flex: 1 }}
-                />
-                <button
-                  type="button"
-                  className="btn"
-                  title="Stock se pick karo"
+                <input data-testid="input-cost" className="input mono" inputMode="numeric"
+                  value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value.replace(/[^0-9.]/g, "") })}
+                  placeholder="0" style={{ flex: 1 }} />
+                <button type="button" className="btn" title="Stock se pick karo"
                   style={{ padding: "0 10px", flexShrink: 0 }}
-                  onClick={() => setShowStockPicker(!showStockPicker)}
-                >
+                  onClick={() => setShowStockPicker(!showStockPicker)}>
                   <Package size={15} />
                 </button>
               </div>
-              {/* Stock Picker Dropdown */}
               {showStockPicker && (
-                <div style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  marginTop: 6,
-                  padding: 10,
-                  maxHeight: 220,
-                  overflowY: "auto",
-                }}>
-                  <input
-                    className="input"
-                    placeholder="Part ya model search..."
-                    value={stockSearch}
-                    onChange={(e) => setStockSearch(e.target.value)}
-                    style={{ marginBottom: 8, fontSize: 12 }}
-                  />
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, marginTop: 6, padding: 10, maxHeight: 200, overflowY: "auto" }}>
+                  <input className="input" placeholder="Part ya model search..." value={stockSearch}
+                    onChange={(e) => setStockSearch(e.target.value)} style={{ marginBottom: 8, fontSize: 12 }} />
                   {stockItems
                     .filter((s) => {
                       const q = stockSearch.toLowerCase();
                       return (s.name || "").toLowerCase().includes(q) || (s.model || "").toLowerCase().includes(q);
                     })
                     .map((s) => (
-                      <div
-                        key={s.id}
-                        onClick={() => {
-                          setF({ ...f, cost: String(s.buyPrice || ""), selectedStockId: s.id });
-                          setShowStockPicker(false);
-                          setStockSearch("");
-                          toast.success(`${s.name} (${s.model}) — ₹${s.buyPrice} fill hua`);
-                        }}
-                        style={{
-                          padding: "8px 10px",
-                          borderRadius: 8,
-                          cursor: "pointer",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          background: "var(--surface2, #1a1a1a)",
-                          marginBottom: 6,
-                        }}
-                      >
+                      <div key={s.id} onClick={() => {
+                        setF({ ...f, cost: String(s.buyPrice || ""), selectedStockId: s.id });
+                        setShowStockPicker(false); setStockSearch("");
+                        toast.success(`${s.name} (${s.model}) — ₹${s.buyPrice} fill hua`);
+                      }} style={{ padding: "8px 10px", borderRadius: 8, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--surface2, #1a1a1a)", marginBottom: 6 }}>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
                           <div style={{ fontSize: 11, color: "var(--muted)" }}>{s.model} • Stock: {s.qty}</div>
                         </div>
-                        <div style={{ fontWeight: 700, color: "var(--primary, #a3e635)" }}>
-                          ₹{s.buyPrice}
-                        </div>
+                        <div style={{ fontWeight: 700, color: "var(--primary, #a3e635)" }}>₹{s.buyPrice}</div>
                       </div>
                     ))}
                   {stockItems.length === 0 && (
                     <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", padding: 10 }}>
-                      Stock mein koi part nahi. Pehle Stock tab mein add karo.
+                      Stock mein koi part nahi.
                     </div>
                   )}
                 </div>
@@ -413,60 +308,48 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
             </div>
             <div className="field">
               <label>Amount (₹)</label>
-              <input
-                data-testid="input-amount"
-                className="input mono" inputMode="numeric"
-                value={f.amount}
-                onChange={(e) => setF({ ...f, amount: e.target.value.replace(/[^0-9.]/g, "") })}
-                placeholder="0"
-              />
+              <input data-testid="input-amount" className="input mono" inputMode="numeric"
+                value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value.replace(/[^0-9.]/g, "") })}
+                placeholder="0" />
             </div>
           </div>
 
-          <div className="field">
-          {/* Payment Status — only for new jobs */}
+          {/* Payment toggle — only new jobs */}
           {!isEdit && (
             <div className="field">
-              <label>Payment</label>
-              <div className="chips">
-                {[
-                  { key: "full", label: "✅ Pura mila" },
-                  { key: "partial", label: "🟡 Adha" },
-                  { key: "unpaid", label: "🔴 Nahi mila" },
-                ].map((opt) => (
-                  <button
-                    type="button"
-                    key={opt.key}
-                    className={`chip ${f.paymentStatus === opt.key ? "active" : ""}`}
-                    onClick={() => setF({ ...f, paymentStatus: opt.key, paidAmount: "" })}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              <label>Payment mila?</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button"
+                  className={`chip ${f.fullPayment ? "active" : ""}`}
+                  style={{ flex: 1, justifyContent: "center" }}
+                  onClick={() => setF({ ...f, fullPayment: true, paidAmount: "" })}>
+                  ✅ Pura mila
+                </button>
+                <button type="button"
+                  className={`chip ${!f.fullPayment ? "active" : ""}`}
+                  style={{ flex: 1, justifyContent: "center", borderColor: !f.fullPayment ? "#f59e0b" : undefined, color: !f.fullPayment ? "#f59e0b" : undefined }}
+                  onClick={() => setF({ ...f, fullPayment: false, paidAmount: "" })}>
+                  🟡 Adha / Nahi mila
+                </button>
               </div>
-              {f.paymentStatus === "partial" && (
-                <input
-                  className="input mono"
-                  style={{ marginTop: 8 }}
+              {!f.fullPayment && (
+                <input className="input mono" style={{ marginTop: 8 }}
                   inputMode="numeric"
-                  placeholder="₹ Kitna mila abhi?"
+                  placeholder="₹ Kitna mila abhi? (0 = bilkul nahi)"
                   value={f.paidAmount}
-                  onChange={(e) => setF({ ...f, paidAmount: e.target.value.replace(/[^0-9.]/g, "") })}
-                />
+                  onChange={(e) => setF({ ...f, paidAmount: e.target.value.replace(/[^0-9.]/g, "") })} />
               )}
             </div>
           )}
+
+          <div className="field">
             <label>Share percentage</label>
+            <div className="chips">
               {PERCENT_OPTIONS.map((p) => (
-                <button
-                  type="button"
-                  key={p}
+                <button type="button" key={p}
                   data-testid={`chip-percent-${p}`}
                   className={`chip ${Number(f.percentage) === p ? "active" : ""}`}
-                  onClick={() => setF({ ...f, percentage: p })}
-                >
-                  {p}%
-                </button>
+                  onClick={() => setF({ ...f, percentage: p })}>{p}%</button>
               ))}
             </div>
           </div>
@@ -487,26 +370,11 @@ export default function JobDialog({ open, onOpenChange, onSaved, job }) {
           </div>
 
           <DialogFooter style={{ marginTop: 6 }}>
-            <button
-              type="button"
-              data-testid="btn-cancel"
-              className="btn"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              data-testid="btn-save-job"
-              className="btn primary"
-              disabled={submitting || uploading}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 size={14} className="spin" /> Saving…
-                </>
-              ) : isEdit ? "Save Changes" : "Save Job"}
+            <button type="button" data-testid="btn-cancel" className="btn"
+              onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</button>
+            <button type="submit" data-testid="btn-save-job" className="btn primary"
+              disabled={submitting || uploading}>
+              {submitting ? <><Loader2 size={14} className="spin" /> Saving…</> : isEdit ? "Save Changes" : "Save Job"}
             </button>
           </DialogFooter>
         </form>
