@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Loader2, Wrench, Eye, EyeOff } from "lucide-react";
+import { applyTheme, getStoredTheme } from "@/lib/theme";
 
 // username → email mapping (hidden from UI)
 const USERNAME = "dhingramobile";
@@ -29,6 +30,9 @@ function Shell() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Apply stored theme on load
+    applyTheme(getStoredTheme());
+
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthReady(true);

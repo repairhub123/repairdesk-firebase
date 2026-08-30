@@ -19,6 +19,7 @@ import CustomerHistory from "@/components/CustomerHistory";
 import Expenses from "@/components/Expenses";
 import Stock from "@/components/Stock";
 import Dues from "@/components/Dues";
+import Settings from "@/components/Settings";
 
 const TABS = ["All", "Pending", "Completed"];
 
@@ -205,6 +206,10 @@ export default function RepairShop({ role, onSwitchRole }) {
           className={`vbtn ${view === "reports" ? "active" : ""}`}
           onClick={() => setView("reports")}
         >Reports</button>
+        <button
+          className={`vbtn ${view === "settings" ? "active" : ""}`}
+          onClick={() => setView("settings")}
+        >⚙️</button>
       </div>
 
       {view === "jobs" ? (
@@ -314,6 +319,8 @@ export default function RepairShop({ role, onSwitchRole }) {
         <Stock />
       ) : view === "dues" ? (
         <Dues />
+      ) : view === "settings" ? (
+        <Settings />
       ) : (
         <Reports jobs={jobs} />
       )}
