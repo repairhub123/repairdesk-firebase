@@ -224,8 +224,10 @@ html.theme-cyberpunk .tab.active {
   text-shadow: 0 0 8px var(--accent);
 }
 
-html.theme-minimal .tab.active {
-  background: #fff !important;
+html.theme-minimal .tab.active,
+html.theme-minimal .vbtn.active,
+html.theme-minimal .chip.active {
+  background: var(--accent) !important;
   color: #000 !important;
   box-shadow: none !important;
 }
