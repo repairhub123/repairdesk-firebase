@@ -80,6 +80,23 @@ export default function Settings() {
       }}>
         💡 Theme turant apply hota hai — page refresh ki zaroorat nahi.
       </div>
+
+      {current !== "default" && (
+        <button
+          onClick={() => handleSelect("default")}
+          style={{
+            marginTop: 12, width: "100%",
+            padding: "12px", borderRadius: 12,
+            background: "transparent",
+            border: "1px solid var(--line)",
+            color: "var(--muted)", fontSize: 13, fontWeight: 600,
+            fontFamily: "inherit", cursor: "pointer",
+            transition: "all 0.2s",
+          }}
+        >
+          ↩ Reset to Default
+        </button>
+      )}
     </div>
   );
 }
